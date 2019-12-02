@@ -271,7 +271,7 @@
 
         if($("animateMotion")[0].repeat !=="indefinite"){
             $("animateMotion").each(function () {
-                this.setAttribute("repeatCount","indefinite");
+                this.setAttribute("repeatCount","5");
 
             });
         }
@@ -351,6 +351,7 @@
             line.setAttribute("id", line_id);
             line.setAttribute("from", CONNECTIONS[i].point1);
             line.setAttribute("to", CONNECTIONS[i].point2);
+            line.setAttribute("stroke-dasharray","5");
 
 
             if (!ROUTER_LINE_MAP[CONNECTIONS[i].point1 + "_From"]) {
@@ -467,11 +468,34 @@
     function generatePositions(routerCount) {
         var positions = [];
 
-        for (var i = 0; i < routerCount; i++) {
+        for (var i = 0; i < routerCount; ) {
             var position = {};
             position.x = Math.floor((Math.random() * 900));
-            position.y = Math.floor((Math.random() * 500));
-            positions.push(position);
+            position.y = Math.floor((Math.random() * 420) + 80);
+
+            if(positions.length === 0){
+                positions.push(position);
+                i++;
+            }else{
+                var isGoodPosition = true;
+                for(var j=0; j<positions.length; j++){
+                    var existing_position = positions[j];
+                    var dx = Math.abs(existing_position.x - position.x);
+                    var dy = Math.abs(existing_position.y - position.y);
+                    var distance = Math.sqrt(Math.pow(dx,2) + Math.pow(dy,2));
+                    if(distance<100){
+                        isGoodPosition = false;
+                        break;
+
+                    }
+                }
+
+                if(isGoodPosition){
+                    positions.push(position);
+                    i++;
+                }
+            }
+
         }
 
         return positions;
