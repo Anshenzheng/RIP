@@ -76,15 +76,15 @@
     <div class="col-lg-3 action-panel">
         <div class="panel-item">
             <span style="display:inline-block;width:150px;">Router Count: </span>
-            <input id="routerCount" onchange="setupMaxValueForConne(this.value)" type="number" max="10" required/>
+            <input id="routerCount" title="Value must be 2~10 " onchange="setupMaxValueForConne(this.value)" onblur="validInput()" type="number" max="10" required/>
 
         </div>
         <div class="panel-item">
             <span style="display:inline-block;width:150px;">Connection Count:</span>
-            <input id="connectionCount" type="number" required/>
+            <input id="connectionCount" title="Value must be 1 ~ n*(n-1)/2, n is router count " type="number" onchange="validInput()" onblur="validInput()" required/>
         </div>
         <div class="panel-item">
-            <input type="button" value="Generate Routers" onclick="generateRouters()" class="btn btn-primary">
+            <input id="generateRoutersBtn" type="button" value="Generate Routers" onclick="generateRouters()" class="btn btn-primary" disabled>
         </div>
     </div>
     <div class="col-lg-8 content-panel">
@@ -141,20 +141,6 @@
     function generateRouters() {
 
         init();
-        var routerCount = document.getElementById("routerCount").value;
-        var connectionCount = document.getElementById("connectionCount").value;
-        console.log(routerCount);
-        console.log(connectionCount);
-        if(routerCount<1 || routerCount>MAX_ROUTER_COUNT){
-            alert("Router count must be a number between 1~10 !");
-            return;
-        }
-
-        if(connectionCount<1 || connectionCount>routerCount*(routerCount-1)/2){
-            alert("Connection count must be a number between 1~ Router_Count*(Router_Count - 1)/2 !");
-            return;
-        }
-
         renderRouters(routerCount);
         setDraggable(); //bind draggable for dynamically created routers.
         bindContextMenu();//bind contextMenu
@@ -166,7 +152,24 @@
 
     }
 
-    function renderRouters(routerCount){
+    /**
+     * Valid the input
+     * **/
+    function validInput(){
+
+        var routerCount = document.getElementById("routerCount").value;
+        var connectionCount = document.getElementById("connectionCount").value;
+        console.log(routerCount);
+        console.log(connectionCount);
+        if(routerCount> 1 && routerCount<=MAX_ROUTER_COUNT && connectionCount>=1 && connectionCount<=routerCount*(routerCount-1)/2){
+            $("#generateRoutersBtn").removeAttr("disabled");
+        }else{
+            $("#generateRoutersBtn").attr("disabled","disabled");
+        }
+
+    }
+    function renderRouters(){
+        var routerCount = $("#routerCount").val();
         var positions = generatePositions(routerCount);
         for (var i = 0; i < routerCount; i++) {
             var routerHTML =
@@ -610,6 +613,29 @@
                 }
             }
         }
+
+        //refresh router buffer
+        for(var index=0; index<CONNECTIONS.length; index++) {
+            var conn = CONNECTIONS[index];
+            var router1 = conn.point1;
+            var router2 = conn.point2;
+
+
+            var router1_table = NETWORK[router1].table;
+            var router2_table = NETWORK[router2].table;
+            NETWORK[router1].buffer = [];
+            NETWORK[router2].buffer = [];
+            var router1_buffer = NETWORK[router1].buffer;
+            var router2_buffer = NETWORK[router2].buffer;
+
+            for(var i=0; i<router1_table.length; i++){
+                router1_buffer.push(router1_table[i]);
+            }
+
+            for(var i=0; i<router2_table.length; i++){
+                router2_buffer.push(router2_table[i]);
+            }
+        }
     }
 
 
@@ -910,15 +936,10 @@
 
         //clean router table
         NETWORK[router_id].status = "inactive";
-        var router_table = NETWORK[router_id].table;
-        for(var i=0; i< router_table.length; i++){
-            router_table[i].metric = UNREACHABLE_COUNT
-        }
-
-        var router_buffer = NETWORK[router_id].buffer;
-        for(var i=0; i< router_buffer.length; i++){
-            router_buffer[i].metric = UNREACHABLE_COUNT
-        }
+        NETWORK[router_id].table = [];
+        NETWORK[router_id].buffer=[];
+        NETWORK[router_id].table.push({"target": router_id, "next_hop":"", "metric":UNREACHABLE_COUNT});
+        NETWORK[router_id].buffer.push({"target": router_id, "next_hop":"", "metric":UNREACHABLE_COUNT });
 
         //update set the router img as black & white
         $("#"+router_id+">img").addClass("blackandwhite");
