@@ -225,7 +225,7 @@
         singleStepBtnTxt.setAttribute("y","35");
         singleStepBtnTxt.setAttribute("text-anchor","middle");
         singleStepBtnTxt.setAttribute("style","pointer-events:none");
-        singleStepBtnTxt.textContent = "Single Step Execute";
+        singleStepBtnTxt.textContent = "Execute in Single Step";
 
         var wholeStepBtn = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         wholeStepBtn.setAttribute("id","wholeStepBtn");
@@ -243,17 +243,17 @@
         wholeStepBtnTxt.setAttribute("y","75");
         wholeStepBtnTxt.setAttribute("text-anchor","middle");
         wholeStepBtnTxt.setAttribute("style","pointer-events:none");
-        wholeStepBtnTxt.textContent = "Whole Step Execute";
+        wholeStepBtnTxt.textContent = "Execute in Multiple Steps";
 
 
         $("#svg-conn").append(singleStepBtn).append(wholeStepBtn).append(singleStepBtnTxt).append(wholeStepBtnTxt);
 
         $("#singleStepBtn").bind("click", function () {
-            calculateSingleStepRouterMap();
+            calculateRouterMapInSingleStep();
         });
 
         $("#wholeStepBtn").bind("click", function () {
-            calculateWholeRouterMap();
+            calculateRouterMapInMultipleStep();
         });
 
 
@@ -264,7 +264,7 @@
      * Description:
      * Single step to calculate the router map
      * **/
-    function calculateSingleStepRouterMap(){
+    function calculateRouterMapInSingleStep(){
 
         if($("animateMotion")[0].repeat !=="1"){
             $("animateMotion").each(function () {
@@ -285,7 +285,7 @@
     /**
      * Calculate the  router map 5 times
      * **/
-    function calculateWholeRouterMap(){
+    function calculateRouterMapInMultipleStep(){
 
         if($("animateMotion")[0].repeat !=="indefinite"){
             $("animateMotion").each(function () {
