@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <title>RIP</title>
     <link href="https://cdn.staticfile.org/twitter-bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/jquery-contextmenu/2.8.1/jquery.contextMenu.min.css" rel="stylesheet">
     <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
     <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-contextmenu/2.8.1/jquery.contextMenu.js"></script>
     <style>
         .main-content {
             width: 100%;
@@ -26,7 +28,6 @@
         .panel-item {
             margin-bottom: 10px;
         }
-
 
         .router {
             width: 100px;
@@ -64,6 +65,10 @@
             z-index: 999;
         }
 
+        .blackandwhite{
+            filter:grayscale(100%);
+        }
+
     </style>
 </head>
 <body>
@@ -95,6 +100,7 @@
     <div class="col-lg-1"></div>
 
 </div>
+
 <script type="application/javascript">
 
     /** Variable Declaration **/
@@ -122,7 +128,7 @@
         $("#routers").empty();
         $("#final_connection_table").empty();
 
-        if(interval != null && interval){
+        if(interval != null && interval!== undefined){
             clearInterval(interval);
         }
         interval = null;
@@ -139,7 +145,7 @@
         var connectionCount = document.getElementById("connectionCount").value;
         console.log(routerCount);
         console.log(connectionCount);
-        if(routerCount<1 || routerCount>10){
+        if(routerCount<1 || routerCount>MAX_ROUTER_COUNT){
             alert("Router count must be a number between 1~10 !");
             return;
         }
@@ -151,6 +157,7 @@
 
         renderRouters(routerCount);
         setDraggable(); //bind draggable for dynamically created routers.
+        bindContextMenu();//bind contextMenu
         setHoverEventHandler();
         generateConnections(); //generate connections between routers
         triggerBitAnimation();
@@ -174,7 +181,7 @@
             router.setAttribute("style", "left:" + positions[i].x + "px;top:" + positions[i].y + "px");
             router.innerHTML = routerHTML;
             $("#routers").append(router);
-            NETWORK[router_id] = {"table":[],"buffer":[]};
+            NETWORK[router_id] = {"table":[],"buffer":[],"status":"active"};
             NETWORK[router_id].table.push({"target": router_id, "next_hop":"", "metric":0 });
             NETWORK[router_id].buffer.push({"target": router_id, "next_hop":"", "metric":0 });
         }
@@ -250,6 +257,10 @@
 
     }
 
+    /**
+     * Description:
+     * Single step to calculate the router map
+     * **/
     function calculateSingleStepRouterMap(){
 
         if($("animateMotion")[0].repeat !=="1"){
@@ -267,6 +278,10 @@
         },100);
 
     }
+
+    /**
+     * Calculate the  router map 5 times
+     * **/
     function calculateWholeRouterMap(){
 
         if($("animateMotion")[0].repeat !=="indefinite"){
@@ -298,6 +313,7 @@
                 var conn = {};
                 conn.point1 = "R" + Math.floor(Math.random() * (routerCount));
                 conn.point2 = "R" + Math.floor(Math.random() * (routerCount));
+                conn.status = "active"
                 if (conn.point1 !== conn.point2) {
                     if (CONNECTIONS.length === 0) {
                         CONNECTIONS.push(conn);
@@ -385,6 +401,11 @@
 
     }
 
+    /**
+     * Description:
+     * Set the hover envent handler to show router tables when cursor hover on/off the router
+     *
+     * **/
     function setHoverEventHandler(){
         $(".router").each(function(){
             $(this).hover(function(){
@@ -502,6 +523,9 @@
 
     }
 
+    /**
+     * Description: Calculate the router maps
+     * **/
     function calculateRouterMap() {
 
         setTimeout(function(){
@@ -521,7 +545,10 @@
         var html="<div id='hover_table' style='display:none;left:"+left+"px;top:"+top+"px'><table style='width: 100%'><th >Target</th><th>Metric</th><th>Next Hop</th>";
         for(var i=0; i<router_table.length; i++){
             var router_message = router_table[i];
-            html+="<tr><td>"+router_message.target+"</td><td>"+router_message.metric+"</td><td>"+router_message.next_hop+"</td></tr>";
+            if(router_message.metric<UNREACHABLE_COUNT){
+                html+="<tr><td>"+router_message.target+"</td><td>"+router_message.metric+"</td><td>"+router_message.next_hop+"</td></tr>";
+            }
+
         }
         html+="</table></div>";
         $("#routers").append(html);
@@ -547,24 +574,48 @@
 
 
             NETWORK[router1].table = [];
+
+            var router1_table = NETWORK[router1].table;
             for(var i=0; i<router1_buffer.length; i++){
-                if(!contains(NETWORK[router1].table,router1_buffer[i])){
-                    NETWORK[router1].table.push(router1_buffer[i]);
+                var exists = false;
+                for(var j=0; j<router1_table.length; j++){
+                    if(router1_table[j].target == router1_buffer[i].target){
+                        exists = true;
+                        if(router1_table[j].metric > router1_buffer[i].metric){
+                            router1_table[j].metric = router1_buffer[i].metric;
+                            router1_table[j].next_hop = router1_buffer[i].next_hop;
+                        }
+                    }
+                }
+                if(!exists){
+                    router1_table.push(router1_buffer[i]);
                 }
             }
 
             NETWORK[router2].table = [];
+            var router2_table = NETWORK[router2].table;
             for(var i=0; i<router2_buffer.length; i++){
-                if(!contains(NETWORK[router2].table,router2_buffer[i])){
-                    NETWORK[router2].table.push(router2_buffer[i]);
-
+                var exists = false;
+                for(var j=0; j<router2_table.length; j++){
+                    if(router2_table[j].target == router2_buffer[i].target){
+                        exists = true;
+                        if(router2_table[j].metric > router2_buffer[i].metric){
+                            router2_table[j].metric = router2_buffer[i].metric;
+                            router2_table[j].next_hop = router2_buffer[i].next_hop;
+                        }
+                    }
                 }
-
+                if(!exists){
+                    router2_table.push(router2_buffer[i]);
+                }
             }
         }
     }
 
 
+    /**
+     * Description: Check if router message exists in router table.
+     * **/
     function contains(routerMessageArray, routerMessage){
         var exists = false;
         for(var i=0; i<routerMessageArray.length; i++){
@@ -578,6 +629,9 @@
         return exists;
     }
 
+    /**
+     * Description: Render the final router table connection status
+     * **/
     function renderFinalTable(){
         $("#final_connection_table").empty();
         var final_table = {};
@@ -606,7 +660,7 @@
                         html+="<td>R"+k+"</td>"
                     }else{
                         var metric = final_table["R"+k]["R"+l];
-                        if(metric ==undefined || metric > UNREACHABLE_COUNT){
+                        if(metric ==undefined || metric >= UNREACHABLE_COUNT){
                             metric = "- -";
                         }
                         html+="<td>"+metric+"</td>";
@@ -625,6 +679,10 @@
     }
 
 
+    /**
+     * Description: Exchange the router message with neighborhood router
+     *
+     * **/
     function routerMessageExchange(){
         for(var index=0; index<CONNECTIONS.length; index++){
             var conn = CONNECTIONS[index];
@@ -637,55 +695,101 @@
 
             var router1_buffer = NETWORK[router1].buffer;
             var router2_buffer = NETWORK[router2].buffer;
-            for(var i=0; i<router1_table.length; i++){
-                var router1_message = router1_table[i];
-                var router1_buffer_message = router1_buffer[i];
 
-                var exists_in_router2 = false;
-                for(var j=0; j<router2_table.length; j++){
-                    var router2_message = router2_table[j];
+            var router1_status = NETWORK[router1].status;
+            var router2_status = NETWORK[router2].status;
 
-                    if(router1_message.target === router2_message.target){
-                        exists_in_router2 = true;
-                        if(router1_message.metric > (router2_message.metric+1)){
-                            router1_buffer_message.metric = router2_message.metric+1;
-                            router1_buffer_message.next_hop = router2;
-                        }
+            if(router1_status == "active" && router2_status=="inactive"){
+                for(var i=0; i<router1_buffer.length; i++){
+                    var current_buffer_message = router1_buffer[i];
+                    if(current_buffer_message.next_hop ==router2 || current_buffer_message.target == router2){
+                        current_buffer_message.metric = UNREACHABLE_COUNT;
                     }
                 }
-                if(!exists_in_router2){
-                    var message_new_to_router2 = {"target":router1_message.target, "next_hop":router1,"metric":router1_message.metric+1};
-                    router2_buffer.push(message_new_to_router2);
 
-                }
-            }
-
-            for(var i=0; i<router2_table.length; i++){
-                var router2_message = router2_table[i];
-                var router2_buffer_message = router2_buffer[i];
-
-                var exists_in_router1 = false;
-                for(var j=0; j<router1_table.length; j++){
-                    var router1_message = router1_table[j];
-
-                    if(router1_message.target === router2_message.target){
-                        exists_in_router1 = true;
-                        if(router2_message.metric > (router1_message.metric+1)){
-                            router2_buffer_message.metric = router1_message.metric+1;
-                            router2_buffer_message.next_hop = router1;
-                        }
+            }else if(router1_status == "inactive" && router2_status=="active"){
+                for(var i=0; i<router2_buffer.length; i++){
+                    var current_buffer_message = router2_buffer[i];
+                    if(current_buffer_message.next_hop ==router1 || current_buffer_message.target == router1){
+                        current_buffer_message.metric = UNREACHABLE_COUNT;
                     }
                 }
-                if(!exists_in_router1){
-                    var message_new_to_router1 = {"target":router2_message.target, "next_hop":router2,"metric":router2_message.metric+1};
-                    router1_buffer.push(message_new_to_router1);
 
+            }else if(router1_status == "inactive" && router2_status=="inactive"){
+                // DO nothing.
+            }else{
+                for(var i=0; i<router1_table.length; i++){
+                    var router1_message = router1_table[i];
+                    var router1_buffer_message = router1_buffer[i];
+
+                    var exists_in_router2 = false;
+                    for(var j=0; j<router2_table.length; j++){
+                        var router2_message = router2_table[j];
+
+                        if(router1_message.target === router2_message.target){
+                            exists_in_router2 = true;
+                            if(router1_message.next_hop==router2 || router1_message.metric > (router2_message.metric+1)){
+                                if(router2_message.next_hop != router1){
+                                    router1_buffer_message.metric = router2_message.metric+1;
+                                    router1_buffer_message.next_hop = router2;
+                                }
+
+                            }
+                        }
+                    }
+                    if(!exists_in_router2){
+                        if(router1_message.next_hop != router2){
+                            var message_new_to_router2 = {"target":router1_message.target, "next_hop":router1,"metric":router1_message.metric+1};
+                            router2_buffer.push(message_new_to_router2);
+                        }else{
+                            router1_table.slice(i,1);
+                        }
+
+
+                    }
                 }
+
+                for(var i=0; i<router2_table.length; i++){
+                    var router2_message = router2_table[i];
+                    var router2_buffer_message = router2_buffer[i];
+
+                    var exists_in_router1 = false;
+                    for(var j=0; j<router1_table.length; j++){
+                        var router1_message = router1_table[j];
+
+                        if(router1_message.target === router2_message.target){
+                            exists_in_router1 = true;
+                            if(router2_message.next_hop==router1 || router2_message.metric > (router1_message.metric+1)){
+                                if(router1_message.next_hop != router2){
+                                    router2_buffer_message.metric = router1_message.metric+1;
+                                    router2_buffer_message.next_hop = router1;
+                                }
+
+                            }
+                        }
+                    }
+                    if(!exists_in_router1){
+                        if(router2_message.next_hop != router1){
+                            var message_new_to_router1 = {"target":router2_message.target, "next_hop":router2,"metric":router2_message.metric+1};
+                            router1_buffer.push(message_new_to_router1);
+                        }else{
+                            router2_table.slice(i,1);
+                        }
+
+
+                    }
+                }
+
             }
+
+
         }
 
     }
 
+    /**
+     * Trigger the annimation
+     * **/
     function triggerBitAnimation(){
 
         if(!is_animation_paint){
@@ -695,7 +799,7 @@
     }
 
     /**
-     * Trigger the message bit animation
+     * Paint the animation element
      * **/
 
     function paintBitAnimation() {
@@ -753,6 +857,124 @@
         }
     }
 
+    /**
+     * Description: Bind context menu to disable/enable router
+     *
+     * **/
+    function bindContextMenu(){
+        $.contextMenu({
+            selector:'.router',
+            callback:function(key,options){
+                var router_id = this.context.id;
+                this.data('enableDisabled', !this.data('enableDisabled'));
+
+                if(key == "disable" && NETWORK[router_id].status=="active"){
+                    disableRouter(router_id);
+                }else if(key=="enable" && NETWORK[router_id].status=="inactive"){
+                    enableRouter(router_id);
+                }
+            },
+            items:{
+                "disable":{
+                    name:"Disable Router",
+                    icon:"cut",
+                    disabled:function(key, opt) {
+                        return this.data('enableDisabled');
+                    }},
+                "enable":{
+                    name:"Enable Router",
+                    icon:"paste",
+                    disabled:function(key, opt) {
+                        return !this.data('enableDisabled');
+                    }}
+            }
+        });
+
+        $('.router').on('click', function(e){
+            console.log('clicked', this);
+        })
+    }
+
+    /**
+     * Description: Disable router by router id
+     * **/
+    function disableRouter(router_id){
+        for(var i=0;i<CONNECTIONS.length; i++){
+            if(CONNECTIONS[i].point1 == router_id || CONNECTIONS[i].point2 == router_id){
+                CONNECTIONS[i].status ="inactive";
+
+                //set connection line as red
+                $("#line"+i).attr("stroke","red");
+            }
+        }
+
+        //clean router table
+        NETWORK[router_id].status = "inactive";
+        var router_table = NETWORK[router_id].table;
+        for(var i=0; i< router_table.length; i++){
+            router_table[i].metric = UNREACHABLE_COUNT
+        }
+
+        var router_buffer = NETWORK[router_id].buffer;
+        for(var i=0; i< router_buffer.length; i++){
+            router_buffer[i].metric = UNREACHABLE_COUNT
+        }
+
+        //update set the router img as black & white
+        $("#"+router_id+">img").addClass("blackandwhite");
+
+        //disable animation
+        var animate_from_id = "animate_from_"+router_id;
+        var animate_to_id = "_to_"+router_id;
+
+        $("animateMotion").each(function(){
+            if(this.id.startsWith(animate_from_id)){
+                $(this).attr("dur","0");
+            }
+
+            if(this.id.endsWith(animate_to_id)){
+                $(this).attr("dur","0");
+
+            }
+        });
+
+        console.log(NETWORK);
+    }
+
+    /**
+     * Description: Enable router by router id.
+     * **/
+    function enableRouter(router_id){
+        NETWORK[router_id].status = "active";
+
+        for(var i=0;i<CONNECTIONS.length; i++){
+            var point1 = CONNECTIONS[i].point1;
+            var point2 = CONNECTIONS[i].point2;
+            if(CONNECTIONS[i].point1 == router_id || CONNECTIONS[i].point2 == router_id){
+                if(NETWORK[CONNECTIONS[i].point1].status == "active" && NETWORK[CONNECTIONS[i].point2].status == "active" ){
+                    CONNECTIONS[i].status ="active";
+
+                    //set connection line as noe-red and enable animation
+                    $("#line"+i).attr("stroke","rgb(137,163,176)");
+                    $("#animate_from_"+point1+"_to_"+point2).attr("dur","4s");
+                    $("#animate_from_"+point2+"_to_"+point1).attr("dur","4s");
+
+                }
+
+            }
+        }
+
+        //clean router table
+        NETWORK[router_id].table = [];
+        NETWORK[router_id].buffer=[];
+        NETWORK[router_id].table.push({"target": router_id, "next_hop":"", "metric":0 });
+        NETWORK[router_id].buffer.push({"target": router_id, "next_hop":"", "metric":0 });
+
+        //update set the router img as black & white
+        $("#"+router_id+">img").removeClass("blackandwhite");
+
+        console.log(NETWORK);
+    }
 </script>
 
 </body>
