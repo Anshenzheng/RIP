@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RIP</title>
+    <link href="https://cdn.staticfile.org/twitter-bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/jquery-contextmenu/2.8.1/jquery.contextMenu.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-contextmenu/2.8.1/jquery.contextMenu.js"></script>
+    <style>
+        .main-content {
+            width: 100%;
+            padding: 30px 0 0 10px;
+        }
+
+        .content-panel{
+            padding-bottom:10px;
+        }
+        .action-panel{
+            padding:10px 0 0 30px;
+        }
+        input {
+            padding: 5px;
+            width: 180px;
+        }
+
+        .panel-item {
+            margin-bottom: 10px;
+        }
+
+        .router {
+            width: 100px;
+            height: 100px;
+            position: absolute;
+            cursor: move;
+        }
+
+        #final_connection_table table{
+            border: 1px solid rgb(137,163,176);
+            width:1000px;
+        }
+
+
+        th{
+            background: #7f9bab;
+            border: 1px solid rgb(165, 169, 171);
+            color: #fff;
+            padding:2px;
+            height: 50px;
+            text-align: center;
+        }
+        td{
+            border: 1px solid rgb(137,163,176);
+            padding:2px;
+            height: 50px;
+            text-align: center;
+        }
+
+
+        #hover_table{
+            width: 200px;
+            position: absolute;
+            background: #e0e4ea;
+            z-index: 999;
+        }
+
+        .blackandwhite{
+            filter:grayscale(100%);
+        }
+
+    </style>
+</head>
+<body>
+<div class="row main-content" style="width: 100%">
+    <div class="col-lg-3 action-panel">
+        <div class="panel-item">
+            <span style="display:inline-block;width:150px;">Router Count: </span>
+            <input id="routerCount" title="Value must be 2~10 " onchange="setupMaxValueForConne(this.value)" onblur="validInput()" type="number" max="10" required/>
+
+        </div>
+        <div class="panel-item">
+            <span style="display:inline-block;width:150px;">Connection Count:</span>
+            <input id="connectionCount" title="Value must be 1 ~ n*(n-1)/2, n is router count " type="number" onchange="validInput()" onblur="validInput()" required/>
+        </div>
+        <div class="panel-item">
+            <input id="generateRoutersBtn" type="button" value="Generate Routers" onclick="generateRouters()" class="btn btn-primary" disabled>
+        </div>
+    </div>
+    <div class="col-lg-8 content-panel">
+        <div style="width:1000px;height:600px;position: relative; border: 2px solid #809cab" id="routers"></div>
+    </div>
+    <div class="col-lg-1"></div>
+
+
+</div>
+<div class="row">
+    <div class="col-lg-3"></div>
+    <div class="col-lg-8" id="final_connection_table" style="text-align: center"></div>
+    <div class="col-lg-1"></div>
+
+</div>
+
+<script type="application/javascript">
+
+    /** Variable Declaration **/
+
+    const MAX_ROUTER_COUNT = 10; //Max router count
+    const CENTER_POSITION_OFFSET = 50; //Router's center offset related to router's position
+    const UNREACHABLE_COUNT = 16;// MAX unreachable count
+
+    var CONNECTIONS = []; //Used to record all the connections between routers
+    var ROUTERS = []; //Used to record all the routers
+    var ROUTER_LINE_MAP = {}; //Used to record the relationship between routers & lines
+    var NETWORK = {}; //Used to record all the router tables
+    var is_animation_paint = false; //falg for checking if message animate have already been created.
+    var interval = null;
+
+    /**
+     * Init all the collections
+     * **/
+    function init() {
+        CONNECTIONS = [];
+        ROUTERS = [];
+        ROUTER_LINE_MAP = {};
+        NETWORK = {};
+        is_animation_paint = false;
+        $("#routers").empty();
+        $("#final_connection_table").empty();
+
+        if(interval != null && interval!== undefined){
+            clearInterval(interval);
+        }
+        interval = null;
+
+    }
+
+    /**
+     * Generate routers with input router count.
+     * **/
+    function generateRouters() {
+
+        init();
+        renderRouters(routerCount);
+        setDraggable(); //bind draggable for dynamically created routers.
+        bindContextMenu();//bind contextMenu
+        setHoverEventHandler();
+        generateConnections(); //generate connections between routers
+        triggerBitAnimation();
+        generateBtns();
+
+
+    }
+
+    /**
+     * Valid the input
+     * **/
+    function validInput(){
+
+        var routerCount = document.getElementById("routerCount").value;
+        var connectionCount = document.getElementById("connectionCount").value;
+        console.log(routerCount);
+        console.log(connectionCount);
+        if(routerCount> 1 && routerCount<=MAX_ROUTER_COUNT && connectionCount>=1 && connectionCount<=routerCount*(routerCount-1)/2){
+            $("#generateRoutersBtn").removeAttr("disabled");
+        }else{
+            $("#generateRoutersBtn").attr("disabled","disabled");
+        }
+
+    }
+    function renderRouters(){
+        var routerCount = $("#routerCount").val();
+        var positions = generatePositions(routerCount);
+        for (var i = 0; i < routerCount; i++) {
+            var routerHTML =
+                '<div ></div>' +
+                '<img src="image/router.png" style="width: 100px;height: auto;">' +
+                '<div style="text-align: center">R' + i + '</div>';
+            var router = document.createElement('div');
+            var router_id = "R" + i;
+            router.setAttribute("class", "router");
+            router.setAttribute("id", router_id);
+            router.setAttribute("draggable", true);
+            router.setAttribute("style", "left:" + positions[i].x + "px;top:" + positions[i].y + "px");
+            router.innerHTML = routerHTML;
+            $("#routers").append(router);
+            NETWORK[router_id] = {"table":[],"buffer":[],"status":"active"};
+            NETWORK[router_id].table.push({"target": router_id, "next_hop":"", "metric":0 });
+            NETWORK[router_id].buffer.push({"target": router_id, "next_hop":"", "metric":0 });
+        }
+
+    }
+    /**
+     * Set max number of connections with count of routers.
+     * MAX_CONN_COUNT = (ROUTER_COUNT * (ROUTER_COUNT - 1))/2
+     *
+     * **/
+    function setupMaxValueForConne(routerValue) {
+        var connCount = document.getElementById("connectionCount");
+        var maxValue = routerValue * (routerValue - 1) / 2;
+        var value = maxValue - 2;
+        connCount.setAttribute("max", maxValue);
+        connCount.setAttribute("value", value>0?value:maxValue);
+
+    }
+
+
+    /**
+     * Generate SVG buttons for control the animation
+     * **/
+    function generateBtns(){
+        var singleStepBtn = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        singleStepBtn.setAttribute("id","singleStepBtn");
+        singleStepBtn.setAttribute("x","800");
+        singleStepBtn.setAttribute("y","10");
+        singleStepBtn.setAttribute("width","180");
+        singleStepBtn.setAttribute("height","35");
+        singleStepBtn.setAttribute("fill","#809cab");
+        singleStepBtn.setAttribute("style","cursor:pointer");
+
+
+        var singleStepBtnTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        singleStepBtnTxt.setAttribute("id","singleStepBtnTxt");
+        singleStepBtnTxt.setAttribute("x","890");
+        singleStepBtnTxt.setAttribute("y","35");
+        singleStepBtnTxt.setAttribute("text-anchor","middle");
+        singleStepBtnTxt.setAttribute("style","pointer-events:none");
+        singleStepBtnTxt.textContent = "Execute in Single Step";
+
+        var wholeStepBtn = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        wholeStepBtn.setAttribute("id","wholeStepBtn");
+        wholeStepBtn.setAttribute("x","800");
+        wholeStepBtn.setAttribute("y","50");
+        wholeStepBtn.setAttribute("width","180");
+        wholeStepBtn.setAttribute("height","35");
+        wholeStepBtn.setAttribute("fill","#809cab");
+        wholeStepBtn.setAttribute("style","cursor:pointer");
+
+
+        var wholeStepBtnTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        wholeStepBtnTxt.setAttribute("id","wholeStepBtnTxt");
+        wholeStepBtnTxt.setAttribute("x","890");
+        wholeStepBtnTxt.setAttribute("y","75");
+        wholeStepBtnTxt.setAttribute("text-anchor","middle");
+        wholeStepBtnTxt.setAttribute("style","pointer-events:none");
+        wholeStepBtnTxt.textContent = "Execute in Multiple Steps";
+
+
+        $("#svg-conn").append(singleStepBtn).append(wholeStepBtn).append(singleStepBtnTxt).append(wholeStepBtnTxt);
+
+        $("#singleStepBtn").bind("click", function () {
+            calculateRouterMapInSingleStep();
+        });
+
+        $("#wholeStepBtn").bind("click", function () {
+            calculateRouterMapInMultipleStep();
+        });
+
+
+
+    }
+
+    /**
+     * Description:
+     * Single step to calculate the router map
+     * **/
+    function calculateRouterMapInSingleStep(){
+
+        if($("animateMotion")[0].repeat !=="1"){
+            $("animateMotion").each(function () {
+                this.setAttribute("repeatCount","1");
+            });
+        }
+
+        if(interval != null && interval){
+            clearInterval(interval);
+        }
+
+        setTimeout(function () {
+            calculateRouterMap();
+        },100);
+
+    }
+
+    /**
+     * Calculate the  router map 5 times
+     * **/
+    function calculateRouterMapInMultipleStep(){
+
+        if($("animateMotion")[0].repeat !=="indefinite"){
+            $("animateMotion").each(function () {
+                this.setAttribute("repeatCount","5");
+
+            });
+        }
+
+
+        if(interval != null && interval){
+            clearInterval(interval);
+        }
+        calculateRouterMap();
+        interval = setInterval(calculateRouterMap, 4100);
+
+    }
+
+
+    /**
+     * Generate connections between routers
+     * **/
+    function generateConnections() {
+        CONNECTIONS = [];
+        var connectionCount = $("#connectionCount").val();
+        var routerCount = $("#routerCount").val();
+        for (var i = 0; i < connectionCount; i++) {
+            while (true) {
+                var conn = {};
+                conn.point1 = "R" + Math.floor(Math.random() * (routerCount));
+                conn.point2 = "R" + Math.floor(Math.random() * (routerCount));
+                conn.status = "active"
+                if (conn.point1 !== conn.point2) {
+                    if (CONNECTIONS.length === 0) {
+                        CONNECTIONS.push(conn);
+                        break;
+                    } else {
+                        var exists = false;
+                        for (var j = 0; j < CONNECTIONS.length; j++) {
+                            if ((CONNECTIONS[j].point1 === conn.point1 && CONNECTIONS[j].point2 === conn.point2)
+                                || (CONNECTIONS[j].point1 === conn.point2 && CONNECTIONS[j].point2 === conn.point1)) {
+                                exists = true;
+                            }
+
+                        }
+                        if (!exists) {
+                            CONNECTIONS.push(conn);
+                            break;
+                        }
+
+                    }
+                }
+            }
+
+        }
+
+        drawConnections();
+
+    }
+
+    /**
+     * Draw the connections as lines
+     * **/
+    function drawConnections() {
+
+        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute("id", "svg-conn");
+        svg.setAttribute("version", "1.1");
+        svg.setAttribute("width", "1000");
+        svg.setAttribute("height", "1000");
+
+        for (var i = 0; i < CONNECTIONS.length; i++) {
+            var conn_point1 = $("#" + CONNECTIONS[i].point1);
+            var conn_point2 = $("#" + CONNECTIONS[i].point2);
+            var conn_from_x = conn_point1.position().left + CENTER_POSITION_OFFSET;
+            var conn_from_y = conn_point1.position().top + CENTER_POSITION_OFFSET;
+            var conn_to_x = conn_point2.position().left + CENTER_POSITION_OFFSET;
+            var conn_to_y = conn_point2.position().top + CENTER_POSITION_OFFSET;
+
+
+            var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            var line_id = "line" + i;
+            line.setAttribute("id", line_id);
+            line.setAttribute("from", CONNECTIONS[i].point1);
+            line.setAttribute("to", CONNECTIONS[i].point2);
+            line.setAttribute("stroke-dasharray","5");
+
+
+            if (!ROUTER_LINE_MAP[CONNECTIONS[i].point1 + "_From"]) {
+                var point1From = [];
+                point1From.push(line_id);
+                ROUTER_LINE_MAP[CONNECTIONS[i].point1 + "_From"] = point1From;
+            } else {
+                ROUTER_LINE_MAP[CONNECTIONS[i].point1 + "_From"].push(line_id);
+            }
+
+            if (!ROUTER_LINE_MAP[CONNECTIONS[i].point2 + "_To"]) {
+                var point2To = [];
+                point2To.push(line_id);
+                ROUTER_LINE_MAP[CONNECTIONS[i].point2 + "_To"] = point2To;
+            } else {
+                ROUTER_LINE_MAP[CONNECTIONS[i].point2 + "_To"].push(line_id);
+            }
+
+            line.setAttribute("class", "bind-router");
+
+            line.setAttribute("x1", conn_from_x);
+            line.setAttribute("y1", conn_from_y);
+            line.setAttribute("x2", conn_to_x);
+            line.setAttribute("y2", conn_to_y);
+            line.setAttribute("stroke", "rgb(137,163,176)");
+            line.setAttribute("stroke-width", 1);
+
+            svg.appendChild(line);
+        }
+        $("#routers").append(svg);
+
+    }
+
+    /**
+     * Description:
+     * Set the hover envent handler to show router tables when cursor hover on/off the router
+     *
+     * **/
+    function setHoverEventHandler(){
+        $(".router").each(function(){
+            $(this).hover(function(){
+              var left= $(this).position().left + 120;
+              var top= $(this).position().top;
+              var id = this.id;
+              var current_router_table = NETWORK[id].table;
+                renderRouterTables(current_router_table,left,top);
+            },function(){
+                var hover_table = $("#hover_table");
+                if(hover_table){
+                    hover_table.animate({
+                        width:'toggle'
+                    });
+
+                    hover_table.remove();
+
+                }
+
+            });
+        });
+    }
+    /**
+     * Set draggable for routers
+     * **/
+    function setDraggable() {
+        $('.router:not(.ui-draggable)').draggable({
+            containment: "parent",
+            start: function () {
+                console.log("drag start on " + this);
+            },
+            drag: function () {
+                var id = this.id;
+                var lineFrom = ROUTER_LINE_MAP[id + "_From"];
+                if (lineFrom) {
+                    for (var i = 0; i < lineFrom.length; i++) {
+                        $("#" + lineFrom[i]).attr({
+                            x1: $("#" + id).position().left + 50,
+                            y1: $("#" + id).position().top + 50
+                        });
+                    }
+                }
+                var lineTo = ROUTER_LINE_MAP[id + "_To"];
+                if (lineTo) {
+                    for (var i = 0; i < lineTo.length; i++) {
+                        $("#" + lineTo[i]).attr({
+                            x2: $("#" + id).position().left + 50,
+                            y2: $("#" + id).position().top + 50
+                        });
+
+                    }
+                }
+
+                var animate_from_id = "animate_from_" + id;
+                var animate_to_id = "_to_" + id;
+                $("animateMotion").each(function () {
+                    if (this.id.startsWith(animate_from_id)) {
+                        $(this).attr({from: ($("#" + id).position().left + 50) + "," + ($("#" + id).position().top + 50)});
+                    }
+
+                    if (this.id.endsWith(animate_to_id)) {
+                        $(this).attr({to: ($("#" + id).position().left + 50) + "," + ($("#" + id).position().top + 50)});
+                    }
+
+                });
+
+                console.log("draging....");
+
+            },
+            stop: function () {
+                console.log("end drag start on " + this);
+            }
+        });
+
+
+    }
+
+    /**
+     * Randomly setup the positions for the generated routers
+     * **/
+    function generatePositions(routerCount) {
+        var positions = [];
+
+        for (var i = 0; i < routerCount; ) {
+            var position = {};
+            position.x = Math.floor((Math.random() * 900));
+            position.y = Math.floor((Math.random() * 420) + 80);
+
+            if(positions.length === 0){
+                positions.push(position);
+                i++;
+            }else{
+                var isGoodPosition = true;
+                for(var j=0; j<positions.length; j++){
+                    var existing_position = positions[j];
+                    var dx = Math.abs(existing_position.x - position.x);
+                    var dy = Math.abs(existing_position.y - position.y);
+                    var distance = Math.sqrt(Math.pow(dx,2) + Math.pow(dy,2));
+                    if(distance<100){
+                        isGoodPosition = false;
+                        break;
+
+                    }
+                }
+
+                if(isGoodPosition){
+                    positions.push(position);
+                    i++;
+                }
+            }
+
+        }
+
+        return positions;
+
+    }
+
+    /**
+     * Description: Calculate the router maps
+     * **/
+    function calculateRouterMap() {
+
+        setTimeout(function(){
+            routerMessageExchange();
+            refreshRouterTables();
+            renderFinalTable();
+
+        },3950);
+        console.log(NETWORK);
+
+    }
+
+    /**
+     * Show Router tables for each router
+     * **/
+    function renderRouterTables(router_table,left,top){
+        var html="<div id='hover_table' style='display:none;left:"+left+"px;top:"+top+"px'><table style='width: 100%'><th >Target</th><th>Metric</th><th>Next Hop</th>";
+        for(var i=0; i<router_table.length; i++){
+            var router_message = router_table[i];
+            if(router_message.metric<UNREACHABLE_COUNT){
+                html+="<tr><td>"+router_message.target+"</td><td>"+router_message.metric+"</td><td>"+router_message.next_hop+"</td></tr>";
+            }
+
+        }
+        html+="</table></div>";
+        $("#routers").append(html);
+
+        $("#hover_table").animate({
+            height:'toggle'
+        });
+
+    }
+
+    /**
+     * Refresh Router tables for each router
+     * **/
+    function refreshRouterTables(){
+        for(var index=0; index<CONNECTIONS.length; index++) {
+            var conn = CONNECTIONS[index];
+            var router1 = conn.point1;
+            var router2 = conn.point2;
+
+
+            var router1_buffer = NETWORK[router1].buffer;
+            var router2_buffer = NETWORK[router2].buffer;
+
+
+            NETWORK[router1].table = [];
+
+            var router1_table = NETWORK[router1].table;
+            for(var i=0; i<router1_buffer.length; i++){
+                var exists = false;
+                for(var j=0; j<router1_table.length; j++){
+                    if(router1_table[j].target == router1_buffer[i].target){
+                        exists = true;
+                        if(router1_table[j].metric > router1_buffer[i].metric){
+                            router1_table[j].metric = router1_buffer[i].metric;
+                            router1_table[j].next_hop = router1_buffer[i].next_hop;
+                        }
+                    }
+                }
+                if(!exists){
+                    router1_table.push(router1_buffer[i]);
+                }
+            }
+
+            NETWORK[router2].table = [];
+            var router2_table = NETWORK[router2].table;
+            for(var i=0; i<router2_buffer.length; i++){
+                var exists = false;
+                for(var j=0; j<router2_table.length; j++){
+                    if(router2_table[j].target == router2_buffer[i].target){
+                        exists = true;
+                        if(router2_table[j].metric > router2_buffer[i].metric){
+                            router2_table[j].metric = router2_buffer[i].metric;
+                            router2_table[j].next_hop = router2_buffer[i].next_hop;
+                        }
+                    }
+                }
+                if(!exists){
+                    router2_table.push(router2_buffer[i]);
+                }
+            }
+        }
+
+        //refresh router buffer
+        for(var index=0; index<CONNECTIONS.length; index++) {
+            var conn = CONNECTIONS[index];
+            var router1 = conn.point1;
+            var router2 = conn.point2;
+
+
+            var router1_table = NETWORK[router1].table;
+            var router2_table = NETWORK[router2].table;
+            NETWORK[router1].buffer = [];
+            NETWORK[router2].buffer = [];
+            var router1_buffer = NETWORK[router1].buffer;
+            var router2_buffer = NETWORK[router2].buffer;
+
+            for(var i=0; i<router1_table.length; i++){
+                router1_buffer.push(router1_table[i]);
+            }
+
+            for(var i=0; i<router2_table.length; i++){
+                router2_buffer.push(router2_table[i]);
+            }
+        }
+    }
+
+
+    /**
+     * Description: Check if router message exists in router table.
+     * **/
+    function contains(routerMessageArray, routerMessage){
+        var exists = false;
+        for(var i=0; i<routerMessageArray.length; i++){
+            var current_message = routerMessageArray[i];
+            if(current_message.target === routerMessage.target && current_message.metric === routerMessage.metric){
+                exists = true;
+                break;
+            }
+        }
+
+        return exists;
+    }
+
+    /**
+     * Description: Render the final router table connection status
+     * **/
+    function renderFinalTable(){
+        $("#final_connection_table").empty();
+        var final_table = {};
+        var routerCount = $("#routerCount").val();
+        for(var i=0; i<routerCount; i++){
+           var router_table =  NETWORK["R"+i].table;
+            final_table["R"+i] = {};
+            for(var j=0; j<router_table.length; j++){
+               var router_message = router_table[j];
+                final_table["R"+i][router_message.target] = router_message.metric;
+           }
+        }
+
+        var html = "<table>";
+        for(var k=-1; k<routerCount; k++){
+            html+="<tr>";
+            for(var l=-1; l< routerCount; l++){
+                if(k===-1){
+                    if(l===-1){
+                        html+="<th></th>"
+                    }else{
+                        html+="<th>R"+l+"</th>"
+                    }
+                }else{
+                    if(l===-1){
+                        html+="<td>R"+k+"</td>"
+                    }else{
+                        var metric = final_table["R"+k]["R"+l];
+                        if(metric ==undefined || metric >= UNREACHABLE_COUNT){
+                            metric = "- -";
+                        }
+                        html+="<td>"+metric+"</td>";
+                    }
+                }
+            }
+            html+="</tr>";
+
+        }
+
+        html+="</table>";
+
+        $("#final_connection_table").append(html);
+
+
+    }
+
+
+    /**
+     * Description: Exchange the router message with neighborhood router
+     *
+     * **/
+    function routerMessageExchange(){
+        for(var index=0; index<CONNECTIONS.length; index++){
+            var conn = CONNECTIONS[index];
+            var router1 = conn.point1;
+            var router2 = conn.point2;
+
+
+            var router1_table = NETWORK[router1].table;
+            var router2_table = NETWORK[router2].table;
+
+            var router1_buffer = NETWORK[router1].buffer;
+            var router2_buffer = NETWORK[router2].buffer;
+
+            var router1_status = NETWORK[router1].status;
+            var router2_status = NETWORK[router2].status;
+
+            if(router1_status == "active" && router2_status=="inactive"){
+                for(var i=0; i<router1_buffer.length; i++){
+                    var current_buffer_message = router1_buffer[i];
+                    if(current_buffer_message.next_hop ==router2 || current_buffer_message.target == router2){
+                        current_buffer_message.metric = UNREACHABLE_COUNT;
+                    }
+                }
+
+            }else if(router1_status == "inactive" && router2_status=="active"){
+                for(var i=0; i<router2_buffer.length; i++){
+                    var current_buffer_message = router2_buffer[i];
+                    if(current_buffer_message.next_hop ==router1 || current_buffer_message.target == router1){
+                        current_buffer_message.metric = UNREACHABLE_COUNT;
+                    }
+                }
+
+            }else if(router1_status == "inactive" && router2_status=="inactive"){
+                // DO nothing.
+            }else{
+                for(var i=0; i<router1_table.length; i++){
+                    var router1_message = router1_table[i];
+                    var router1_buffer_message = router1_buffer[i];
+
+                    var exists_in_router2 = false;
+                    for(var j=0; j<router2_table.length; j++){
+                        var router2_message = router2_table[j];
+
+                        if(router1_message.target === router2_message.target){
+                            exists_in_router2 = true;
+                            if(router1_message.next_hop==router2 || router1_message.metric > (router2_message.metric+1)){
+                                if(router2_message.next_hop != router1){
+                                    router1_buffer_message.metric = router2_message.metric+1;
+                                    router1_buffer_message.next_hop = router2;
+                                }
+
+                            }
+                        }
+                    }
+                    if(!exists_in_router2){
+                        if(router1_message.next_hop != router2){
+                            var message_new_to_router2 = {"target":router1_message.target, "next_hop":router1,"metric":router1_message.metric+1};
+                            router2_buffer.push(message_new_to_router2);
+                        }else{
+                            router1_table.slice(i,1);
+                        }
+
+
+                    }
+                }
+
+                for(var i=0; i<router2_table.length; i++){
+                    var router2_message = router2_table[i];
+                    var router2_buffer_message = router2_buffer[i];
+
+                    var exists_in_router1 = false;
+                    for(var j=0; j<router1_table.length; j++){
+                        var router1_message = router1_table[j];
+
+                        if(router1_message.target === router2_message.target){
+                            exists_in_router1 = true;
+                            if(router2_message.next_hop==router1 || router2_message.metric > (router1_message.metric+1)){
+                                if(router1_message.next_hop != router2){
+                                    router2_buffer_message.metric = router1_message.metric+1;
+                                    router2_buffer_message.next_hop = router1;
+                                }
+
+                            }
+                        }
+                    }
+                    if(!exists_in_router1){
+                        if(router2_message.next_hop != router1){
+                            var message_new_to_router1 = {"target":router2_message.target, "next_hop":router2,"metric":router2_message.metric+1};
+                            router1_buffer.push(message_new_to_router1);
+                        }else{
+                            router2_table.slice(i,1);
+                        }
+
+
+                    }
+                }
+
+            }
+
+
+        }
+
+    }
+
+    /**
+     * Trigger the annimation
+     * **/
+    function triggerBitAnimation(){
+
+        if(!is_animation_paint){
+            paintBitAnimation();
+            is_animation_paint = true;
+        }
+    }
+
+    /**
+     * Paint the animation element
+     * **/
+
+    function paintBitAnimation() {
+
+        for (var i = 0; i < CONNECTIONS.length; i++) {
+            var conn = CONNECTIONS[i];
+            var conn_point1 = $("#" + conn.point1);
+            var conn_point2 = $("#" + conn.point2);
+            var point1_x = conn_point1.position().left + CENTER_POSITION_OFFSET;
+            var point1_y = conn_point1.position().top + CENTER_POSITION_OFFSET;
+            var point2_x = conn_point2.position().left + CENTER_POSITION_OFFSET;
+            var point2_y = conn_point2.position().top + CENTER_POSITION_OFFSET;
+
+            var point1 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            var point1_id = "point_" + conn.point1;
+            point1.setAttribute("id", point1_id);
+            point1.setAttribute("r", "5");
+            point1.setAttribute("fill", "red");
+            var point1_animate = document.createElementNS('http://www.w3.org/2000/svg', 'animateMotion');
+            var animate1_id = "animate_from_" + conn.point1 + "_to_" + conn.point2;
+            point1_animate.setAttribute("id", animate1_id);
+            point1_animate.setAttribute("class", animate1_id);
+            point1_animate.setAttribute("fill", "remove");
+            point1_animate.setAttribute("dur", "4s");
+            point1_animate.setAttribute("attributeName", "transform");
+            point1_animate.setAttribute("type", "translate");
+            point1_animate.setAttribute("from", point1_x + "," + point1_y);
+            point1_animate.setAttribute("to", point2_x + "," + point2_y);
+            point1_animate.setAttribute("additive", "replace");
+            point1_animate.setAttribute("repeatCount", "1");
+            point1_animate.setAttribute("begin", "singleStepBtn.click;wholeStepBtn.click");
+            point1.appendChild(point1_animate);
+
+            var point2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            var point2_id = "point_" + conn.point2;
+            point2.setAttribute("id", point2_id);
+            point2.setAttribute("r", "5");
+            point2.setAttribute("fill", "green");
+            var point2_animate = document.createElementNS('http://www.w3.org/2000/svg', 'animateMotion');
+            var animate2_id = "animate_from_" + conn.point2 + "_to_" + conn.point1;
+            point2_animate.setAttribute("id", animate2_id);
+            point2_animate.setAttribute("class", animate2_id);
+            point2_animate.setAttribute("fill", "remove");
+            point2_animate.setAttribute("dur", "4s");
+            point2_animate.setAttribute("attributeName", "transform");
+            point2_animate.setAttribute("type", "translate");
+            point2_animate.setAttribute("from", point2_x + "," + point2_y);
+            point2_animate.setAttribute("to", point1_x + "," + point1_y);
+            point2_animate.setAttribute("additive", "replace");
+            point2_animate.setAttribute("repeatCount", "1");//indefinite
+            point2_animate.setAttribute("begin", "singleStepBtn.click;wholeStepBtn.click");
+            point2.appendChild(point2_animate);
+
+            $("#svg-conn").append(point1).append(point2);
+        }
+    }
+
+    /**
+     * Description: Bind context menu to disable/enable router
+     *
+     * **/
+    function bindContextMenu(){
+        $.contextMenu({
+            selector:'.router',
+            callback:function(key,options){
+                var router_id = this.context.id;
+                this.data('enableDisabled', !this.data('enableDisabled'));
+
+                if(key == "disable" && NETWORK[router_id].status=="active"){
+                    disableRouter(router_id);
+                }else if(key=="enable" && NETWORK[router_id].status=="inactive"){
+                    enableRouter(router_id);
+                }
+            },
+            items:{
+                "disable":{
+                    name:"Disable Router",
+                    icon:"cut",
+                    disabled:function(key, opt) {
+                        return this.data('enableDisabled');
+                    }},
+                "enable":{
+                    name:"Enable Router",
+                    icon:"paste",
+                    disabled:function(key, opt) {
+                        return !this.data('enableDisabled');
+                    }}
+            }
+        });
+
+        $('.router').on('click', function(e){
+            console.log('clicked', this);
+        })
+    }
+
+    /**
+     * Description: Disable router by router id
+     * **/
+    function disableRouter(router_id){
+        for(var i=0;i<CONNECTIONS.length; i++){
+            if(CONNECTIONS[i].point1 == router_id || CONNECTIONS[i].point2 == router_id){
+                CONNECTIONS[i].status ="inactive";
+
+                //set connection line as red
+                $("#line"+i).attr("stroke","red");
+            }
+        }
+
+        //clean router table
+        NETWORK[router_id].status = "inactive";
+        NETWORK[router_id].table = [];
+        NETWORK[router_id].buffer=[];
+        NETWORK[router_id].table.push({"target": router_id, "next_hop":"", "metric":UNREACHABLE_COUNT});
+        NETWORK[router_id].buffer.push({"target": router_id, "next_hop":"", "metric":UNREACHABLE_COUNT });
+
+        //update set the router img as black & white
+        $("#"+router_id+">img").addClass("blackandwhite");
+
+        //disable animation
+        var animate_from_id = "animate_from_"+router_id;
+        var animate_to_id = "_to_"+router_id;
+
+        $("animateMotion").each(function(){
+            if(this.id.startsWith(animate_from_id)){
+                $(this).attr("dur","0");
+            }
+
+            if(this.id.endsWith(animate_to_id)){
+                $(this).attr("dur","0");
+
+            }
+        });
+
+        console.log(NETWORK);
+    }
+
+    /**
+     * Description: Enable router by router id.
+     * **/
+    function enableRouter(router_id){
+        NETWORK[router_id].status = "active";
+
+        for(var i=0;i<CONNECTIONS.length; i++){
+            var point1 = CONNECTIONS[i].point1;
+            var point2 = CONNECTIONS[i].point2;
+            if(CONNECTIONS[i].point1 == router_id || CONNECTIONS[i].point2 == router_id){
+                if(NETWORK[CONNECTIONS[i].point1].status == "active" && NETWORK[CONNECTIONS[i].point2].status == "active" ){
+                    CONNECTIONS[i].status ="active";
+
+                    //set connection line as noe-red and enable animation
+                    $("#line"+i).attr("stroke","rgb(137,163,176)");
+                    $("#animate_from_"+point1+"_to_"+point2).attr("dur","4s");
+                    $("#animate_from_"+point2+"_to_"+point1).attr("dur","4s");
+
+                }
+
+            }
+        }
+
+        //clean router table
+        NETWORK[router_id].table = [];
+        NETWORK[router_id].buffer=[];
+        NETWORK[router_id].table.push({"target": router_id, "next_hop":"", "metric":0 });
+        NETWORK[router_id].buffer.push({"target": router_id, "next_hop":"", "metric":0 });
+
+        //update set the router img as black & white
+        $("#"+router_id+">img").removeClass("blackandwhite");
+
+        console.log(NETWORK);
+    }
+</script>
+
+</body>
+</html>
